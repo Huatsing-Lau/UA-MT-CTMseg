@@ -1,5 +1,5 @@
 <!-- #region -->
-# UA-MT-CTMseg: Semi-supervised mul-ticlass segmentation of CTM image utilized UA-MT network
+# UA-MT-CTMseg: Semi-supervised multi-class segmentation of CTM image utilized UA-MT network
 
 
 ### Introduction

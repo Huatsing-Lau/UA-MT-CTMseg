@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import torch
 import numpy as np
@@ -141,36 +142,37 @@ class RandomCrop(object):
             label = label[w1:w1 + self.output_size[0], h1:h1 + self.output_size[1], d1:d1 + self.output_size[2]]
         return {'image': image, 'label': label}
 
-# import SimpleITK as sitk
-# def resample_image3D(
-#     image3D,
-#     spacing=[0.3,0.3,3],
-#     ratio=1.0,
-#     method='Linear',):
-#     """做插值"""
-#     resample = sitk.ResampleImageFilter()
-#     if method is 'Linear':
-#         resample.SetInterpolator(sitk.sitkLinear)
-#     elif method is 'Nearest':
-#         resample.SetInterpolator(sitk.sitkNearestNeighbor)
-#     resample.SetOutputDirection( (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
-#     resample.SetOutputOrigin((0,0,0))
-#     newspacing = (np.array(spacing)*ratio).tolist()
-#     resample.SetOutputSpacing(newspacing)
+import SimpleITK as sitk
+def resample_image3D(
+    image3D,
+    spacing=[0.3,0.3,3],
+    ratio=1.0,
+    method='Linear',):
+    """做插值"""
+    resample = sitk.ResampleImageFilter()
+    if method is 'Linear':
+        resample.SetInterpolator(sitk.sitkLinear)
+    elif method is 'Nearest':
+        resample.SetInterpolator(sitk.sitkNearestNeighbor)
+    resample.SetOutputDirection( (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
+    resample.SetOutputOrigin((0,0,0))
+    newspacing = (np.array(spacing)*ratio).tolist()
+    resample.SetOutputSpacing(newspacing)
     
-#     newsize = np.round(np.array(image3D.shape)*ratio).astype('int').tolist() 
-#     resample.SetSize(newsize)
-#     # resample.SetDefaultPixelValue(0)
-#     print("image3D.shape:",image3D.shape)
-#     image3D = sitk.GetImageFromArray(image3D)
-#     image3D.SetSpacing(spacing)
-#     image3D.SetDirection( (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
-#     image3D.SetOrigin((0,0,0))
+    newsize = np.round(np.array(image3D.shape)*ratio).astype('int').tolist() 
+    resample.SetSize(newsize)
+    # resample.SetDefaultPixelValue(0)
+    print("image3D.shape:",image3D.shape)
+    image3D = sitk.GetImageFromArray(image3D)
+    image3D.SetSpacing(spacing)
+    image3D.SetDirection( (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0) )
+    image3D.SetOrigin((0,0,0))
     
-#     newimage = resample.Execute(image3D)
-#     newimage = sitk.GetArrayFromImage(newimage)
-#     print("newimage.shape:",newimage.shape)
-#     return newimage
+    newimage = resample.Execute(image3D)
+    newimage = sitk.GetArrayFromImage(newimage)
+    print("newimage.shape:",newimage.shape)
+    return newimage
+
 
 class RandomScale(object):
     """
@@ -202,7 +204,7 @@ class RandomScale(object):
 #               "np.unique(label):",np.unique(label),
 #              )
         return {'image': image, 'label': label}
-    
+
 class TransformConsistantOperator():
     """
     Crop randomly flip the dataset in a sample
@@ -238,14 +240,14 @@ class TransformConsistantOperator():
         image = torch.flip(image, dims=[self.axis])
         image = torch.rot90(image, -self.k)
         image = image.permute(3,4,0,1,2)
-        
+
 #         image = image.permute(2,3,4,0,1).cpu()
 #         image = np.flip(image, axis=self.axis).copy()
 #         image = np.rot90(image, -self.k)
 #         image = torch.from_numpy( image.transpose((3,4,0,1,2)).copy() )
-        
+
         return image
-    
+
 class RandomRot(object):
     """
     Randomly rotate the dataset in a sample

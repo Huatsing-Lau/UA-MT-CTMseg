@@ -34,7 +34,7 @@ def save_list2txt(list_variable,fn):
     for item in list_variable:
         f.write(item+'\n')
     f.close()
-    
+
 
 def dataset_split(path,save_dir,ratio=0.8):
     """读取数据集文件夹，该函数将病例分为训练集和测试集，生成两个txt文件"""
@@ -50,7 +50,7 @@ def dataset_split(path,save_dir,ratio=0.8):
     save_list2txt(names_train, fn_train)
     save_list2txt(names_test, fn_test)
     return names_train,names_test
-    
+
 def make_dataset_list(path,save_dir):
     """该函数读取数据集文件夹，列出所有病例，生成一个*.list文件"""
     re = os.path.join(path,'*/mri_norm2.h5')
@@ -67,7 +67,7 @@ def remove_files(re):
     for fn in listt:
         os.remove(fn)
     return listt
-    
+
 if __name__ == '__main__':
     # 有标签数据
     dataset_dir = 'E:/TsingHua-PearlRiverDelta-Phase1/CTM/CTM/CTM_data/Segmented'

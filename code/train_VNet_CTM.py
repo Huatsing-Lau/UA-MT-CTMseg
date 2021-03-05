@@ -1,3 +1,4 @@
+# +
 import os
 import sys
 from tqdm import tqdm
@@ -21,7 +22,7 @@ from networks.vnet import VNet
 # from utils.losses import dice_loss
 from utils import ramps, losses
 from dataloaders.la_heart import LAHeart, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
-
+# -
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str, default='/home/cyagen/tyler/CTM/UA-MT/data/CTM_dataset/Segmented', help='Name of Experiment')
