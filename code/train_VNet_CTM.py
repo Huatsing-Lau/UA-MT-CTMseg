@@ -21,18 +21,18 @@ from torchvision.utils import make_grid
 from networks.vnet import VNet
 # from utils.losses import dice_loss
 from utils import ramps, losses
-from dataloaders.la_heart import LAHeart, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
+from dataloaders.la_heart_sitk import LAHeart, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
 # -
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path', type=str, default='/home/cyagen/tyler/CTM/UA-MT/data/CTM_dataset/Segmented', help='Name of Experiment')
+parser.add_argument('--root_path', type=str, default='../data/CTM_dataset/Segmented', help='Name of Experiment')
 parser.add_argument('--exp', type=str,  default='vnet_supervisedonly_dp', help='model_name')
 parser.add_argument('--max_iterations', type=int,  default=6000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=2, help='batch_size per gpu')
 parser.add_argument('--base_lr', type=float,  default=0.01, help='maximum epoch number to train')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
-parser.add_argument('--gpu', type=str,  default='5', help='GPU to use')
+parser.add_argument('--gpu', type=str,  default='2', help='GPU to use')
 args = parser.parse_args(args=[])
 
 train_data_path = args.root_path
@@ -75,7 +75,7 @@ if __name__ == "__main__":
                        split='train',
                        #num=16,
                        transform = transforms.Compose([
-                          RandomScale(ratio_low=0.6, ratio_high=1.5),
+#                           RandomScale(ratio_low=0.6, ratio_high=1.5),
                           RandomNoise(mu=0, sigma=0.05),
                           RandomRot(),
                           RandomFlip(),
@@ -90,7 +90,14 @@ if __name__ == "__main__":
                        ]))
     def worker_init_fn(worker_id):
         random.seed(args.seed+worker_id)
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,  num_workers=4, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(
+        db_train, 
+        batch_size=batch_size, 
+        shuffle=True,  
+        num_workers=0,#4, 
+        pin_memory=True, 
+        worker_init_fn=worker_init_fn
+    )
 
     net.train()
     optimizer = optim.SGD(net.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
@@ -105,6 +112,8 @@ if __name__ == "__main__":
     for epoch_num in tqdm(range(max_epoch), ncols=70):
         time1 = time.time()
         for i_batch, sampled_batch in enumerate(trainloader):
+#             import pdb
+#             pdb.set_trace()
             time2 = time.time()
             # print('fetch data cost {}'.format(time2-time1))
             volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']

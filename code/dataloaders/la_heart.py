@@ -196,7 +196,6 @@ class RandomScale(object):
         if label is not None:
             label = transform.rescale(label,ratio,order=0,anti_aliasing=True,preserve_range=True,multichannel=False)
             label = np.round(label)
-
 #         assert np.unique(label).tolist() == [0,1,2], "np.unique(rescaled label):"+str(np.unique(label).tolist())
 #         print("image.shape",image.shape,
 #               "label.shape",label.shape,
@@ -205,6 +204,7 @@ class RandomScale(object):
 #              )
         return {'image': image, 'label': label}
 
+# +
 class TransformConsistantOperator():
     """
     Crop randomly flip the dataset in a sample
@@ -241,12 +241,15 @@ class TransformConsistantOperator():
         image = torch.rot90(image, -self.k)
         image = image.permute(3,4,0,1,2)
 
-#         image = image.permute(2,3,4,0,1).cpu()
-#         image = np.flip(image, axis=self.axis).copy()
-#         image = np.rot90(image, -self.k)
-#         image = torch.from_numpy( image.transpose((3,4,0,1,2)).copy() )
+        image = image.permute(2,3,4,0,1).cpu()
+        image = np.flip(image, axis=self.axis).copy()
+        image = np.rot90(image, -self.k)
+        image = torch.from_numpy( image.transpose((3,4,0,1,2)).copy() )
 
         return image
+
+
+# -
 
 class RandomRot(object):
     """

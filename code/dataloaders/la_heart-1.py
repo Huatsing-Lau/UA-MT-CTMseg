@@ -170,8 +170,8 @@ class TransformConsistantOperator():
         image = np.rot90(image, -self.k)
         image = np.transpose(image,(3,4,0,1,2)).copy()
         return image
-    
-    
+
+
 class RandomRotFlip(object):
     """
     Crop randomly flip the dataset in a sample

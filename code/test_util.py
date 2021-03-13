@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# +
 import h5py
 import math
 import nibabel as nib
@@ -8,19 +9,155 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import os
 
 
-def test_all_case(net, image_list, num_classes, patch_size=(112, 112, 80), stride_xy=18, stride_z=4, save_result=True, test_save_path=None, preproc_fn=None):
+def predict_and_center_cut_all_case(net, image_list, num_classes, 
+                        patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
+                        save_result=True, test_save_path=None, preproc_fn=None,
+                        device='cpu'):
+    for image_path in tqdm(image_list):
+        id = image_path.split('/')[-2]
+        print(id,':')
+        out_dir = test_save_path+id
+        if not os.path.isdir(out_dir):
+            os.mkdir(out_dir)
+            
+        h5f = h5py.File(image_path, 'r')
+        image = h5f['image'][:]
+        if preproc_fn is not None:
+            image = preproc_fn(image)
+        label_pred, score_map = test_single_case(
+            net, image, 
+            stride_xy, stride_z, patch_size, 
+            num_classes=num_classes, 
+            device=device)
+        
+        import pdb
+        pdb.set_trace()
+        filter_mask = filter_connected_domain(label_pred,num_keep_region=None,ratio_keep=0.001)
+        filter_mask = (filter_mask>0).astype(float)
+        import pdb
+        pdb.set_trace()
+        label_pred = label_pred*filter_mask
+
+        # 发现圆形视场的边界处经常出现错误分割(轮廓线),因此需要手动过滤
+        r = label_pred.shape[0]/2
+        xc,yc = label_pred.shape[0]/2,label_pred.shape[0]/2
+#         filter_mask = np.ones(label_pred.shape)
+#         for x in range(label_pred.shape[0]):
+#             for y in range(label_pred.shape[1]):
+#                 filter_mask[x,y,:] = 0 if r*0.5<np.sqrt((x-xc)**2+(y-yc)**2)<r*2 else 1
+#         label_pred = filter_mask*label_pred
+        
+        import pdb
+        pdb.set_trace()
+        # onehot
+        label_onehot_pred = tf.keras.utils.to_categorical(label_pred)
+        if not label_onehot_pred.shape[-1]==3:
+            print(id+' onehot shape error: miss one or more pixel class')
+            continue
+            
+        # center cut
+        tempL = np.nonzero(label_pred)
+        minx, maxx = np.min(tempL[0]).astype(int), np.max(tempL[0]).astype(int)
+        miny, maxy = np.min(tempL[1]).astype(int), np.max(tempL[1]).astype(int)
+        minz, maxz = np.min(tempL[2]).astype(int), np.max(tempL[2]).astype(int)
+        image = image[minx:maxx+1, miny:maxy+1, minz:maxz+1]
+        label_pred = label_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1]
+        label_onehot_pred = label_onehot_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1, :]
+            
+        # case 拼接
+        numd = []
+        for d in range(label_pred.shape[2]):
+            numd.append( len(np.where(label_pred[:,:,d].flatten()==2)[0]) )
+        numd = np.array(numd)
+        slice = int(np.where(numd==numd.max())[0][0])
+        fig = plt.figure( frameon=False)#dpi=100, 
+        image_unstd = (image-image.min())/(image.max()-image.min())*255
+        npimg = np.append( image_unstd[:,:,slice],label_pred[:,:,slice]/2*255,axis=1 )
+        plt.imshow(npimg.astype(int),cmap='plasma')#一定要转为int
+        plt.savefig( test_save_path + id + str(slice) + "_pred.png" )
+        plt.show()
+        
+        import pdb
+        pdb.set_trace()
+        
+        if save_result:
+            # save files
+            filename = os.path.join(os.path.dirname(image_path),'center_cut.h5')
+            f = h5py.File(filename, 'w')
+            f.create_dataset('image', data=image.astype(np.float32), compression="gzip")
+#             f.create_dataset('label', data=label_onehot_pred.astype(np.int), compression="gzip")
+            f.close()
+#             nib.save(nib.Nifti1Image(image[:].astype(np.float32), np.eye(4)), 
+#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_img.nii.gz")
+#             nib.save(nib.Nifti1Image(label_pred.astype(np.float32), np.eye(4)), 
+#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_pred.nii.gz")
+#             nib.save(nib.Nifti1Image(label_onehot_pred[:].astype(np.float32), np.eye(4)), 
+#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_label_onehot_pred.nii.gz")
+    print('All finished')
+
+
+# -
+
+from skimage import measure
+def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
+    """
+    原文链接：https://blog.csdn.net/a563562675/article/details/107066836
+    return label of filter 
+    """
+    # 标记输入的3D图像
+    label, num = measure.label(image, connectivity=1, background=0, return_num=True)
+    if num < 1:
+        return image
+
+    # 获取对应的region对象
+    region = measure.regionprops(label)
+    # 获取每一块区域面积并排序
+    num_list = [i for i in range(0, num)]
+    area_list = [region[i].area for i in num_list]
+    
+    # 去除面积较小的连通域
+    if ratio_keep:
+        max_region_area = np.array(area_list).max()
+        import pdb
+        pdb.set_trace()
+        drop_list = np.where(area_list<max_region_area*ratio_keep)[0]
+        for i in drop_list:
+            label[region[i-1].slice][region[i-1].image] = 0 
+    
+    else:
+        if len(num_list) > num_keep_region:
+            num_list_sorted = sorted(num_list, key=lambda x: area_list[x])[::-1]# 面积由大到小排序
+            for i in num_list_sorted[num_keep_region:]:
+                # label[label==i] = 0
+                label[region[i-1].slice][region[i-1].image] = 0
+#             num_list_sorted = num_list_sorted[:num_keep_region]
+    import pdb
+    pdb.set_trace()
+    return label
+
+
+def test_all_case(
+    net, image_list, 
+    num_classes, patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
+    save_result=True, test_save_path=None, preproc_fn=None,
+    device="cuda"
+):
+    
     metrics = pd.DataFrame(columns=['dice_bg','dice_dura','dice_SC']) 
     total_metric = 0.0
     for image_path in tqdm(image_list):
         id = image_path.split('/')[-2]
         h5f = h5py.File(image_path, 'r')
         image = h5f['image'][:]
-        label = h5f['label'][:]
+        label = np.argmax(h5f['label'][:],axis=-1)
         if preproc_fn is not None:
             image = preproc_fn(image)
-        prediction, score_map = test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=num_classes)
+        prediction, score_map = test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=num_classes, device="cuda")
 
         if np.sum(prediction)==0:
             single_metric = (0,0,0,0)
@@ -42,7 +179,7 @@ def test_all_case(net, image_list, num_classes, patch_size=(112, 112, 80), strid
     return avg_metric, metrics
 
 
-def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1):
+def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1, device="cuda"):
     w, h, d = image.shape
 
     # if the size of image is less than patch_size, then padding it
@@ -85,7 +222,7 @@ def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1)
                 test_patch = image[xs:xs+patch_size[0], ys:ys+patch_size[1], zs:zs+patch_size[2]]
                 test_patch = np.expand_dims(np.expand_dims(test_patch,axis=0),axis=0).astype(np.float32)
                 #test_patch = torch.from_numpy(test_patch).cuda()# gpu
-                test_patch = torch.from_numpy(test_patch)# cpu
+                test_patch = torch.from_numpy(test_patch).to(device)# cpu
                 y1 = net(test_patch)
                 y = F.softmax(y1, dim=1)
                 y = y.cpu().data.numpy()
@@ -140,3 +277,8 @@ def calculate_metric_percase(pred, gt, num_classes):
     else:
         raise ValueError("pred和gt不能是onehot编码")
     return dice#, jc#, hd, asd
+
+
+2<1<6
+
+

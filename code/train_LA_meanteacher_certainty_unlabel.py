@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import sys
 from tqdm import tqdm
@@ -21,19 +22,19 @@ from vnet import VNet
 # from networks.vnet import VNet
 from dataloaders import utils
 from utils import ramps, losses
-from dataloaders.la_heart import LAHeart, LAHeart_unseg, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRotFlip, ToTensor, TransformConsistantOperator
+from dataloaders.la_heart_sitk import LAHeart, LAHeart_unseg, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TransformConsistantOperator
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path_labeled', type=str, default='/home/cyagen/tyler/CTM/UA-MT/data/CTM_dataset/Segmented')
-parser.add_argument('--root_path_unlabeled', type=str, default='/home/cyagen/tyler/CTM/UA-MT/data/CTM_dataset/unSegmented')
+parser.add_argument('--root_path_labeled', type=str, default='../data/CTM_dataset/Segmented')
+parser.add_argument('--root_path_unlabeled', type=str, default='../data/CTM_dataset/unSegmented')
 parser.add_argument('--exp', type=str,  default='UAMT_unlabel', help='model_name')
 parser.add_argument('--max_iterations', type=int,  default=6000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=8, help='batch_size per gpu')
-parser.add_argument('--labeled_bs', type=int, default=2, help='labeled_batch_size per gpu')
+parser.add_argument('--labeled_bs', type=int, default=4, help='labeled_batch_size per gpu')
 parser.add_argument('--base_lr', type=float,  default=0.01, help='maximum epoch number to train')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
-parser.add_argument('--gpu', type=str,  default='0', help='GPU to use')
+parser.add_argument('--gpu', type=str,  default='2', help='GPU to use')
 ### costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,  default="mse", help='consistency_type')
@@ -108,16 +109,19 @@ if __name__ == "__main__":
     db_train_labeled = LAHeart(base_dir=labeled_train_data_path,
                        split='train',
                        transform = transforms.Compose([
-                          RandomScale(ratio_low=0.8, ratio_high=1.2),
+#                           RandomScale(ratio_low=0.8, ratio_high=1.2),
                           RandomNoise(mu=0, sigma=0.05),
-                          RandomRotFlip(),
+                          RandomRot(),
+                          RandomFlip(),
                           RandomCrop(patch_size),
                           ToTensor(),
                           ]))
     db_train_unlabeled = LAHeart_unseg(base_dir=unlabeled_train_data_path,
                         transform = transforms.Compose([
-                          RandomScale(ratio_low=0.8, ratio_high=1.2),
-                          RandomRotFlip(),
+#                           RandomScale(ratio_low=0.8, ratio_high=1.2),
+                          RandomNoise(mu=0, sigma=0.05),
+                          RandomRot(),
+                          RandomFlip(),
                           RandomCrop(patch_size),
                           ToTensor(),
                           ]))#因为计算一致性损失时增加了噪声，所以不在此处加噪声

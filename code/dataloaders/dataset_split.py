@@ -36,14 +36,14 @@ def save_list2txt(list_variable,fn):
     f.close()
 
 
-def dataset_split(path,save_dir,ratio=0.8):
+def dataset_split(path,save_dir,ratio=0.8,seed=42):
     """读取数据集文件夹，该函数将病例分为训练集和测试集，生成两个txt文件"""
     re = os.path.join(path,'*/mri_norm2.h5')
     listt = glob(re)
     names = []
     names += [ fn.split('/')[-2] for fn in listt ]#win系统改为'\\'
 
-    names_train,names_test = data_split(names, ratio, shuffle=True, seed=42)
+    names_train,names_test = data_split(names, ratio, shuffle=True, seed=seed)
     
     fn_train = os.path.join(save_dir,'train.list')
     fn_test = os.path.join(save_dir,'test.list')

@@ -5,7 +5,7 @@ from networks.vnet import VNet
 from test_util import test_all_case
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path', type=str, default='/home/cyagen/tyler/CTM/UA-MT/data/CTM_dataset/Segmented', help='Folder of Test Set')
+parser.add_argument('--root_path', type=str, default='../data/CTM_dataset/Segmented', help='Folder of Test Set')
 parser.add_argument('--model', type=str,  default='UAMT_unlabel', help='model_name')
 parser.add_argument('--gpu', type=str,  default='0', help='GPU to use')
 FLAGS = parser.parse_args()
@@ -22,8 +22,8 @@ with open(FLAGS.root_path + '/../test.list', 'r') as f:
     image_list = f.readlines()
 image_list = [os.path.join(FLAGS.root_path,item.replace('\n', ''),"mri_norm2.h5") for item in image_list]
 
-def test_calculate_metric(epoch_num, patch_size=(128, 128, 64), stride_xy=64, stride_z=32):
-    net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False)#.cuda()
+def test_calculate_metric(epoch_num, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device='cuda'):
+    net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False).to(device)#cuda()
     save_mode_path = os.path.join(snapshot_path, 'iter_' + str(epoch_num) + '.pth')
     net.load_state_dict(torch.load(save_mode_path))
     print("init weight from {}".format(save_mode_path))
@@ -37,5 +37,7 @@ def test_calculate_metric(epoch_num, patch_size=(128, 128, 64), stride_xy=64, st
 
 
 if __name__ == '__main__':
-    metric = test_calculate_metric(10000, patch_size=(128, 128, 64), stride_xy=64, stride_z=32)
-    print(metric)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    avg_metric, metrics = test_calculate_metric(10000, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device=device)
+    print(avg_metric)
+    metrics.to_csv(os.path.join(test_save_path,'metrics_test_set.csv'))
