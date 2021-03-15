@@ -21,7 +21,7 @@ from torchvision.utils import make_grid
 from networks.vnet import VNet
 # from utils.losses import dice_loss
 from utils import ramps, losses
-from dataloaders.la_heart_sitk import LAHeart, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
+from dataloaders.CTMSpine_sitk import CTMSpine, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
 # -
 
 parser = argparse.ArgumentParser()
@@ -71,30 +71,34 @@ if __name__ == "__main__":
     net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=True)
     net = net.cuda()
 
-    db_train = LAHeart(base_dir=train_data_path,
-                       split='train',
-                       #num=16,
-                       transform = transforms.Compose([
-#                           RandomScale(ratio_low=0.6, ratio_high=1.5),
-                          RandomNoise(mu=0, sigma=0.05),
-                          RandomRot(),
-                          RandomFlip(),
-                          RandomCrop(patch_size),
-                          ToTensor(),
-                          ]))
-    db_test = LAHeart(base_dir=train_data_path,
-                       split='test',
-                       transform = transforms.Compose([
-                           CenterCrop(patch_size),
-                           ToTensor()
-                       ]))
+    db_train = CTMSpine(
+        base_dir=train_data_path,
+        split='train',
+        #num=16,
+        transform = transforms.Compose([
+            RandomScale(ratio_low=0.6, ratio_high=1.5),
+            RandomNoise(mu=0, sigma=0.05),
+            RandomRot(),
+            RandomFlip(),
+            RandomCrop(patch_size),
+            ToTensor(),
+        ]))
+    db_test = CTMSpine(
+        base_dir=train_data_path,
+        split='test',
+        transform = transforms.Compose([
+            CenterCrop(patch_size),
+            ToTensor()
+        ]))
+    
     def worker_init_fn(worker_id):
         random.seed(args.seed+worker_id)
+        
     trainloader = DataLoader(
         db_train, 
         batch_size=batch_size, 
         shuffle=True,  
-        num_workers=0,#4, 
+        num_workers=4, 
         pin_memory=True, 
         worker_init_fn=worker_init_fn
     )
