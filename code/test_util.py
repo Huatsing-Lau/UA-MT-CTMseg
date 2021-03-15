@@ -127,14 +127,14 @@ def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
         pdb.set_trace()
         drop_list = np.where(area_list<max_region_area*ratio_keep)[0]
         for i in drop_list:
-            label[region[i-1].slice][region[i-1].image] = 0 
+            label[region[i].slice][region[i].image] = 0 
     
     else:
         if len(num_list) > num_keep_region:
             num_list_sorted = sorted(num_list, key=lambda x: area_list[x])[::-1]# 面积由大到小排序
             for i in num_list_sorted[num_keep_region:]:
                 # label[label==i] = 0
-                label[region[i-1].slice][region[i-1].image] = 0
+                label[region[i].slice][region[i].image] = 0
 #             num_list_sorted = num_list_sorted[:num_keep_region]
     import pdb
     pdb.set_trace()
@@ -143,13 +143,18 @@ def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
 
 def test_all_case(
     net, image_list, 
-    num_classes, patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
+    num_classes, 
+    name_classes,
+    patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
     save_result=True, test_save_path=None, preproc_fn=None,
     device="cuda"
 ):
-    
-    metrics = pd.DataFrame(columns=['dice_bg','dice_dura','dice_SC']) 
-    total_metric = 0.0
+    if num_classes==2:
+        cols = ['dice','jc','hd','asd']
+    else:
+        cols = [['dice']*len(name_classes)+['jc']*len(name_classes)+['hd']*len(name_classes)+['asd']*len(name_classes), name_classes*4]
+    metrics = pd.DataFrame(columns=cols) 
+
     for image_path in tqdm(image_list):
         id = image_path.split('/')[-2]
         h5f = h5py.File(image_path, 'r')
@@ -163,20 +168,20 @@ def test_all_case(
             single_metric = (0,0,0,0)
         else:
             single_metric = calculate_metric_percase(prediction, label[:], num_classes)
-        total_metric += np.asarray(single_metric)
         
         print(id,':')
         print("single_metric:",single_metric)
-        
-        metrics.loc[id] = single_metric
+
+        metrics.loc[id] = np.array(single_metric).flatten().tolist()
         if save_result:
             nib.save(nib.Nifti1Image(prediction.astype(np.float32), np.eye(4)), test_save_path + id + "_pred.nii.gz")
             nib.save(nib.Nifti1Image(image[:].astype(np.float32), np.eye(4)), test_save_path + id + "_img.nii.gz")
             nib.save(nib.Nifti1Image(label[:].astype(np.float32), np.eye(4)), test_save_path + id + "_gt.nii.gz")
-    avg_metric = total_metric / len(image_list)
-    print('average metric is:\n{}'.format(avg_metric))
+    mean_metrics = metrics.mean()
+    print('mean metric is:\n')
+    print(mean_metrics)
 
-    return avg_metric, metrics
+    return metrics
 
 
 def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1, device="cuda"):
@@ -271,14 +276,11 @@ def calculate_metric_percase(pred, gt, num_classes):
             pred_k = pred_onehot[...,k]
             gt_k = gt_onehot[...,k]
             dice +=  [metric.dc(result=pred_k, reference=gt_k)]
-            #jc += [metric.jc(result=pred_k, reference=gt_k)]
-            #hd += [metric.hd95(result=pred_k, reference=gt_k)]
-            #asd += [metric.asd(result=pred_k, reference=gt_k)]
+            jc += [metric.jc(result=pred_k, reference=gt_k)]
+            hd += [metric.hd95(result=pred_k, reference=gt_k)]
+            asd += [metric.asd(result=pred_k, reference=gt_k)]
     else:
         raise ValueError("pred和gt不能是onehot编码")
-    return dice#, jc#, hd, asd
-
-
-2<1<6
+    return dice, jc, hd, asd
 
 

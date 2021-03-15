@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+# +
+# 二分类,背景 v.s dura+SC
+
 # +
 import os
 import sys
@@ -21,24 +25,25 @@ from torchvision.utils import make_grid
 from networks.vnet import VNet
 # from utils.losses import dice_loss
 from utils import ramps, losses
-from dataloaders.CTMSpine_sitk import CTMSpine, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
+from dataloaders.la_heart_sitk import LAHeart, RandomScale, RandomNoise, RandomCrop, CenterCrop, RandomRot, RandomFlip, ToTensor, TwoStreamBatchSampler
 # -
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path', type=str, default='../data/CTM_dataset/Segmented', help='Name of Experiment')
-parser.add_argument('--exp', type=str,  default='VNet_CTM', help='model_name')
+parser.add_argument('--root_path', type=str, default='../data/CTM_dataset/Segmented', help='root of source data')
+parser.add_argument('--exp', type=str,  default='VNet_Binary', help='model_name')
 parser.add_argument('--max_iterations', type=int,  default=6000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=2, help='batch_size per gpu')
 parser.add_argument('--base_lr', type=float,  default=0.01, help='maximum epoch number to train')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 parser.add_argument('--gpu', type=str,  default='2', help='GPU to use')
-args = parser.parse_args(args=[])
+args = parser.parse_args()#parser.parse_args(args=[])
 
 train_data_path = args.root_path
 snapshot_path = "../model/" + args.exp + "/"
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+print(os.environ['CUDA_VISIBLE_DEVICES'])
 batch_size = args.batch_size * len(args.gpu.split(','))
 max_iterations = args.max_iterations
 base_lr = args.base_lr
@@ -51,9 +56,9 @@ if args.deterministic:
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-num_classes = 3
+num_classes = 2
 patch_size = (128, 128, 64)
-cls_weights = [1,4,10]
+cls_weights = [1,6]
 
 if __name__ == "__main__":
     ## make logger file
@@ -71,34 +76,30 @@ if __name__ == "__main__":
     net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=True)
     net = net.cuda()
 
-    db_train = CTMSpine(
-        base_dir=train_data_path,
-        split='train',
-        #num=16,
-        transform = transforms.Compose([
-            RandomScale(ratio_low=0.6, ratio_high=1.5),
-            RandomNoise(mu=0, sigma=0.05),
-            RandomRot(),
-            RandomFlip(),
-            RandomCrop(patch_size),
-            ToTensor(),
-        ]))
-    db_test = CTMSpine(
-        base_dir=train_data_path,
-        split='test',
-        transform = transforms.Compose([
-            CenterCrop(patch_size),
-            ToTensor()
-        ]))
-    
+    db_train = LAHeart(base_dir=train_data_path,
+                       split='train',
+                       #num=16,
+                       transform = transforms.Compose([
+#                           RandomScale(ratio_low=0.6, ratio_high=1.5),
+                          RandomNoise(mu=0, sigma=0.05),
+                          RandomRot(),
+                          RandomFlip(),
+                          RandomCrop(patch_size),
+                          ToTensor(),
+                          ]))
+    db_test = LAHeart(base_dir=train_data_path,
+                       split='test',
+                       transform = transforms.Compose([
+                           CenterCrop(patch_size),
+                           ToTensor()
+                       ]))
     def worker_init_fn(worker_id):
         random.seed(args.seed+worker_id)
-        
     trainloader = DataLoader(
         db_train, 
         batch_size=batch_size, 
         shuffle=True,  
-        num_workers=4, 
+        num_workers=0,#4, 
         pin_memory=True, 
         worker_init_fn=worker_init_fn
     )
@@ -116,23 +117,20 @@ if __name__ == "__main__":
     for epoch_num in tqdm(range(max_epoch), ncols=70):
         time1 = time.time()
         for i_batch, sampled_batch in enumerate(trainloader):
-#             import pdb
-#             pdb.set_trace()
             time2 = time.time()
             # print('fetch data cost {}'.format(time2-time1))
             volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
+            
+            # binarization:
+            label_batch = (label_batch>0).long()
             volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
             outputs = net(volume_batch)
 
             loss_seg = F.cross_entropy( outputs, label_batch, weight=torch.tensor(cls_weights,dtype=torch.float32).cuda() )
             outputs_soft = F.softmax(outputs, dim=1)
-            loss_seg_dice = 0
-            print('\n')
-            for i in range(num_classes):
-                loss_mid = losses.dice_loss(outputs_soft[:, i, :, :, :], label_batch == i )
-                loss_seg_dice += loss_mid
-                print('dice score (1-dice_loss): {:.3f}'.format(1-loss_mid))
-            print('dicetotal:{:.3f}'.format( loss_seg_dice))
+            loss_seg_dice = losses.dice_loss(outputs_soft[:, 1, :, :, :], label_batch == 1)
+            dice_score = 1-loss_seg_dice
+            print( 'dice score (1-dice_loss):{:.3f}'.format(dice_score) )
             loss = 0.5*(loss_seg+loss_seg_dice)
 
             optimizer.zero_grad()
@@ -141,11 +139,13 @@ if __name__ == "__main__":
 
             iter_num = iter_num + 1
             writer.add_scalar('lr', lr_, iter_num)
+            writer.add_scalar('dice_score', dice_score, iter_num)
             writer.add_scalar('loss/loss_seg', loss_seg, iter_num)
             writer.add_scalar('loss/loss_seg_dice', loss_seg_dice, iter_num)
             writer.add_scalar('loss/loss', loss, iter_num)
-            logging.info('iteration %d : loss : %f, loss_seg : %f, loss_seg_dice : %f' % 
+            logging.info('iteration %d : dice_score: %f, loss : %f, loss_seg : %f, loss_seg_dice : %f' % 
                          (iter_num, 
+                          dice_score.item(),
                           loss.item(),
                           loss_seg.item(),
                           loss_seg_dice.item())
