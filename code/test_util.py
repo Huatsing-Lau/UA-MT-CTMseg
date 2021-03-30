@@ -13,98 +13,116 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
 
-
-def predict_and_center_cut_all_case(net, image_list, num_classes, 
-                        patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
-                        save_result=True, test_save_path=None, preproc_fn=None,
-                        device='cpu'):
+def predict_and_center_cut_single_case(
+    net,image_path,out_dir,num_classes,
+    patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
+    save_result=True, test_save_path=None, 
+    preproc_fn=None,
+    device='cpu'
+):
+    # 预测并最小包络切割单个样本
+    
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)
+        
+    h5f = h5py.File(image_path, 'r')
+    image = h5f['image'][:]
+    if preproc_fn is not None:
+        image = preproc_fn(image)
+    label_pred, score_map = test_single_case(
+        net, image, 
+        stride_xy, stride_z, patch_size, 
+        num_classes=num_classes, 
+        device=device)
+        
+    # 发现圆形视场的边界处经常出现错误分割(轮廓线),因此需要手动过滤
+    r = label_pred.shape[0]/2
+    xc,yc = label_pred.shape[0]/2,label_pred.shape[0]/2
+    filter_mask = np.ones(label_pred.shape)
+    for x in range(label_pred.shape[0]):
+        for y in range(label_pred.shape[1]):
+            filter_mask[x,y,:] = 0 if r*0.6<np.sqrt((x-xc)**2+(y-yc)**2)<r*2 else 1
+    label_pred = filter_mask*label_pred
+        
+    # 过滤掉小的连通域
+    filter_mask = filter_connected_domain(label_pred,min_region_area=100,num_keep_region=None,ratio_keep=None)
+    filter_mask = (filter_mask>0).astype(float)
+    label_pred = label_pred*filter_mask
+        
+    # onehot
+    label_onehot_pred = tf.keras.utils.to_categorical(label_pred)
+    if not label_onehot_pred.shape[-1]==num_classes:
+        print(id+' onehot shape error: miss one or more pixel class')
+        return None
+            
+    # center cut
+    tempL = np.nonzero(label_pred)
+    minx, maxx = np.min(tempL[0]).astype(int), np.max(tempL[0]).astype(int)
+    miny, maxy = np.min(tempL[1]).astype(int), np.max(tempL[1]).astype(int)
+    minz, maxz = np.min(tempL[2]).astype(int), np.max(tempL[2]).astype(int)
+    image = image[minx:maxx+1, miny:maxy+1, minz:maxz+1]
+    label_pred = label_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1]
+    label_onehot_pred = label_onehot_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1, :]
+        
+    # image & laberl & pred 拼接
+    numd = []
+    for d in range(label_pred.shape[2]):
+        numd.append( len(np.where(label_pred[:,:,d].flatten()==(num_classes-1))[0]) )
+    numd = np.array(numd)
+    slice = int(np.where(numd==numd.max())[0][0])
+    fig = plt.figure( frameon=False)#dpi=100, 
+    image_unstd = (image-image.min())/(image.max()-image.min())*255
+    npimg = np.append( image_unstd[:,:,slice],label_pred[:,:,slice]/(num_classes-1)*255,axis=1 )
+    plt.imshow(npimg.astype(int),cmap='plasma')#一定要转为int
+    plt.savefig(  os.path.join(out_dir, "center_cut_pred.png") )
+    plt.show()
+    
+    return image,label_pred
+    
+def predict_and_center_cut_all_case(
+    net, image_list, num_classes, 
+    patch_size=(112, 112, 80), stride_xy=18, stride_z=4, 
+    save_result=True, test_save_path=None, 
+    preproc_fn=None,
+    device='cpu'):
+    
     for image_path in tqdm(image_list):
         id = image_path.split('/')[-2]
         print(id,':')
-        out_dir = test_save_path+id
-        if not os.path.isdir(out_dir):
-            os.mkdir(out_dir)
-            
-        h5f = h5py.File(image_path, 'r')
-        image = h5f['image'][:]
-        if preproc_fn is not None:
-            image = preproc_fn(image)
-        label_pred, score_map = test_single_case(
-            net, image, 
-            stride_xy, stride_z, patch_size, 
-            num_classes=num_classes, 
-            device=device)
-        
-        import pdb
-        pdb.set_trace()
-        filter_mask = filter_connected_domain(label_pred,num_keep_region=None,ratio_keep=0.001)
-        filter_mask = (filter_mask>0).astype(float)
-        import pdb
-        pdb.set_trace()
-        label_pred = label_pred*filter_mask
-
-        # 发现圆形视场的边界处经常出现错误分割(轮廓线),因此需要手动过滤
-        r = label_pred.shape[0]/2
-        xc,yc = label_pred.shape[0]/2,label_pred.shape[0]/2
-#         filter_mask = np.ones(label_pred.shape)
-#         for x in range(label_pred.shape[0]):
-#             for y in range(label_pred.shape[1]):
-#                 filter_mask[x,y,:] = 0 if r*0.5<np.sqrt((x-xc)**2+(y-yc)**2)<r*2 else 1
-#         label_pred = filter_mask*label_pred
-        
-        import pdb
-        pdb.set_trace()
-        # onehot
-        label_onehot_pred = tf.keras.utils.to_categorical(label_pred)
-        if not label_onehot_pred.shape[-1]==3:
-            print(id+' onehot shape error: miss one or more pixel class')
-            continue
-            
-        # center cut
-        tempL = np.nonzero(label_pred)
-        minx, maxx = np.min(tempL[0]).astype(int), np.max(tempL[0]).astype(int)
-        miny, maxy = np.min(tempL[1]).astype(int), np.max(tempL[1]).astype(int)
-        minz, maxz = np.min(tempL[2]).astype(int), np.max(tempL[2]).astype(int)
-        image = image[minx:maxx+1, miny:maxy+1, minz:maxz+1]
-        label_pred = label_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1]
-        label_onehot_pred = label_onehot_pred[minx:maxx+1, miny:maxy+1, minz:maxz+1, :]
-            
-        # case 拼接
-        numd = []
-        for d in range(label_pred.shape[2]):
-            numd.append( len(np.where(label_pred[:,:,d].flatten()==2)[0]) )
-        numd = np.array(numd)
-        slice = int(np.where(numd==numd.max())[0][0])
-        fig = plt.figure( frameon=False)#dpi=100, 
-        image_unstd = (image-image.min())/(image.max()-image.min())*255
-        npimg = np.append( image_unstd[:,:,slice],label_pred[:,:,slice]/2*255,axis=1 )
-        plt.imshow(npimg.astype(int),cmap='plasma')#一定要转为int
-        plt.savefig( test_save_path + id + str(slice) + "_pred.png" )
-        plt.show()
-        
-        import pdb
-        pdb.set_trace()
-        
-        if save_result:
-            # save files
-            filename = os.path.join(os.path.dirname(image_path),'center_cut.h5')
-            f = h5py.File(filename, 'w')
-            f.create_dataset('image', data=image.astype(np.float32), compression="gzip")
-#             f.create_dataset('label', data=label_onehot_pred.astype(np.int), compression="gzip")
-            f.close()
-#             nib.save(nib.Nifti1Image(image[:].astype(np.float32), np.eye(4)), 
-#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_img.nii.gz")
-#             nib.save(nib.Nifti1Image(label_pred.astype(np.float32), np.eye(4)), 
-#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_pred.nii.gz")
-#             nib.save(nib.Nifti1Image(label_onehot_pred[:].astype(np.float32), np.eye(4)), 
-#                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_label_onehot_pred.nii.gz")
+        out_dir = os.path.join(test_save_path ,id) 
+        try:
+            image,label_pred = predict_and_center_cut_single_case(
+                net,
+                image_path,
+                out_dir,
+                num_classes,
+                patch_size, stride_xy, stride_z, 
+                save_result, test_save_path, 
+                preproc_fn,
+                device
+            )
+            if save_result:
+                # save files
+                filename = os.path.join(out_dir,'center_cut.h5')
+                f = h5py.File(filename, 'w')
+                f.create_dataset('image', data=image.astype(np.float32), compression="gzip")
+    #             f.create_dataset('label', data=label_onehot_pred.astype(np.int), compression="gzip")
+                f.close()
+    #             nib.save(nib.Nifti1Image(image[:].astype(np.float32), np.eye(4)), 
+    #                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_img.nii.gz")
+    #             nib.save(nib.Nifti1Image(label_pred.astype(np.float32), np.eye(4)), 
+    #                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_pred.nii.gz")
+    #             nib.save(nib.Nifti1Image(label_onehot_pred[:].astype(np.float32), np.eye(4)), 
+    #                      out_dir+ '/' + id +'_minx%d_maxx%d_miny%d_maxy%d_minz%d_maxz%d'%(minx,maxx,miny,maxy,minz,maxz)+ "_label_onehot_pred.nii.gz")
+        except:
+            print('skip case %s'%id)
     print('All finished')
 
 
 # -
 
 from skimage import measure
-def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
+def filter_connected_domain(image,min_region_area=None,num_keep_region=None,ratio_keep=None):
     """
     原文链接：https://blog.csdn.net/a563562675/article/details/107066836
     return label of filter 
@@ -121,11 +139,13 @@ def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
     area_list = [region[i].area for i in num_list]
     
     # 去除面积较小的连通域
-    if ratio_keep:
+    if min_region_area:
+        drop_list = np.where(np.array(area_list)<min_region_area)[0]
+        for i in drop_list:
+            label[region[i].slice][region[i].image] = 0
+    elif ratio_keep:
         max_region_area = np.array(area_list).max()
-        import pdb
-        pdb.set_trace()
-        drop_list = np.where(area_list<max_region_area*ratio_keep)[0]
+        drop_list = np.where(np.array(area_list)<max_region_area*ratio_keep)[0]
         for i in drop_list:
             label[region[i].slice][region[i].image] = 0 
     
@@ -136,8 +156,6 @@ def filter_connected_domain(image,num_keep_region=100,ratio_keep=None):
                 # label[label==i] = 0
                 label[region[i].slice][region[i].image] = 0
 #             num_list_sorted = num_list_sorted[:num_keep_region]
-    import pdb
-    pdb.set_trace()
     return label
 
 
@@ -226,7 +244,6 @@ def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1,
                 zs = min(stride_z * z, dd-patch_size[2])
                 test_patch = image[xs:xs+patch_size[0], ys:ys+patch_size[1], zs:zs+patch_size[2]]
                 test_patch = np.expand_dims(np.expand_dims(test_patch,axis=0),axis=0).astype(np.float32)
-                #test_patch = torch.from_numpy(test_patch).cuda()# gpu
                 test_patch = torch.from_numpy(test_patch).to(device)# cpu
                 y1 = net(test_patch)
                 y = F.softmax(y1, dim=1)
@@ -282,5 +299,6 @@ def calculate_metric_percase(pred, gt, num_classes):
     else:
         raise ValueError("pred和gt不能是onehot编码")
     return dice, jc, hd, asd
+
 
 

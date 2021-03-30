@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import torch
 import numpy as np
@@ -5,6 +6,8 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 from skimage import measure
 import scipy.ndimage as nd
+import SimpleITK as sitk
+from tensorflow.keras.utils import to_categorical
 
 
 def recursive_glob(rootdir='.', suffix=''):
@@ -210,5 +213,74 @@ def post_processing(prediction):
     return prediction
 
 
+# +
+def resample_image3D(
+    image3D,
+    newspacing=[0.3,0.3,3],
+    newsize=None,
+    method='Linear',):
+    """做插值"""
+    resample = sitk.ResampleImageFilter()
+    if method == 'Linear':
+        resample.SetInterpolator(sitk.sitkLinear)
+    elif method == 'Nearest':
+        resample.SetInterpolator(sitk.sitkNearestNeighbor)
+    resample.SetOutputDirection(image3D.GetDirection())
+    resample.SetOutputOrigin(image3D.GetOrigin())
+    resample.SetOutputSpacing(newspacing)
 
+    if not newsize:
+        newsize = np.round(np.array(image3D.GetSize())*np.abs(image3D.GetSpacing())/np.array(newspacing)).astype('int').tolist()
+    resample.SetSize(newsize)
+    # resample.SetDefaultPixelValue(0)
+
+    newimage = resample.Execute(image3D)
+    return newimage
+
+def sitk_onehot_transform(image):
+    image_array = sitk.GetArrayFromImage(image)
+    label_array_onehot = to_categorical(image_array)
+    image_onehot = sitk.GetImageFromArray(label_array_onehot)
+    image_onehot.SetOrigin(image.GetOrigin())
+    image_onehot.SetDirection(image.GetDirection())
+    image_onehot.SetSpacing(image.GetSpacing())
+    return image_onehot
+
+def make_out_itk(image,image_sitk):
+    out_image_sitk = sitk.GetImageFromArray(image)
+    out_image_sitk.SetSpacing(image_sitk.GetSpacing())
+    out_image_sitk.SetOrigin(image_sitk.GetOrigin())
+    out_image_sitk.SetDirection(image_sitk.GetDirection())
+    return out_image_sitk
+
+# 数组替换元素
+def array_replace(array,olds,news):
+    # 不适用于onehot
+    #olds:list of old value
+    #news:list of new value
+    olds = np.array(olds)
+    news = np.array(news)
+    offset = olds.max()*10
+    tmps = olds+offset
+    array += offset
+    for tmp,new in zip(tmps,news):
+        array[array==tmp] = new
+    return array
+
+
+# -
+def plot_slice_sample(image,label,d,fn=False):
+    fig = plt.figure()
+    a = fig.add_subplot(1, 2, 1)
+    imgplot = plt.imshow(image[:,:,d].squeeze())
+    a.set_title('image')
+    plt.colorbar(orientation='horizontal')
+    a = fig.add_subplot(1, 2, 2)
+    imgplot = plt.imshow(label[:,:,d].squeeze())
+    imgplot.set_clim(0.0, 3.0)
+    a.set_title('label')
+    plt.colorbar(orientation='horizontal')
+    if fn:
+        plt.savefig(fn)
+    plt.show()
 

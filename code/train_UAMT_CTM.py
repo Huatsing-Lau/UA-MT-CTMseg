@@ -26,7 +26,7 @@ from dataloaders.CTMSpine_sitk import CTMSpine, CTMSpine_unseg, RandomScale, Ran
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path_labeled', type=str, default='../data/CTM_dataset/Segmented')
-parser.add_argument('--root_path_unlabeled', type=str, default='../data/CTM_dataset/unSegmented')
+parser.add_argument('--root_path_unlabeled', type=str, default='../model/prediction/unSegmented_center_cut/VNet_Binary_CTM_post')#'../data/CTM_dataset/unSegmented'
 parser.add_argument('--exp', type=str,  default='UAMT_unlabel', help='model_name')
 parser.add_argument('--max_iterations', type=int,  default=6000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=8, help='batch_size per gpu')

@@ -1,0 +1,35 @@
+Namespace(base_lr=0.01, batch_size=8, consistency=0.1, consistency_rampup=40.0, consistency_type='mse', deterministic=1, ema_decay=0.99, exp='UAMT_unlabel', gpu='2', labeled_bs=4, max_iterations=6000, root_path_labeled='../data/CTM_dataset/Segmented', root_path_unlabeled='../model/prediction/unSegmented_center_cut/VNet_Binary_CTM_post', seed=1337)
+total 140 samples
+total 212 samples
+53 itertations per epoch
+  0%|                                         | 0/172 [00:00<?, ?it/s]max_epoch: 172
+  0%|                                         | 0/172 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "train_UAMT_CTM.py", line 168, in <module>
+    for i_batch, (sampled_batch_labeled, sampled_batch_unlabeled) in enumerate( zip(labeled_trainloader, unlabeled_trainloader) ):
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/dataloader.py", line 518, in __next__
+    data = self._next_data()
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/dataloader.py", line 1200, in _next_data
+    return self._process_data(data)
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/dataloader.py", line 1226, in _process_data
+    data.reraise()
+  File "/usr/local/lib/python3.8/dist-packages/torch/_utils.py", line 434, in reraise
+    raise self.exc_type(msg)
+AttributeError: Caught AttributeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/_utils/worker.py", line 202, in _worker_loop
+    data = fetcher.fetch(index)
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/_utils/fetch.py", line 44, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/usr/local/lib/python3.8/dist-packages/torch/utils/data/_utils/fetch.py", line 44, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/raid/huaqing/tyler/CTM/UA-MT-CTMseg/code/dataloaders/CTMSpine_sitk.py", line 49, in __getitem__
+    sample = self.transform(sample)
+  File "/usr/local/lib/python3.8/dist-packages/torchvision/transforms/transforms.py", line 60, in __call__
+    img = t(img)
+  File "/raid/huaqing/tyler/CTM/UA-MT-CTMseg/code/dataloaders/CTMSpine_sitk.py", line 314, in __call__
+    image,label = resample_image_sitk(image, label, [0.3, 0.3, 3.0])
+  File "/raid/huaqing/tyler/CTM/UA-MT-CTMseg/code/dataloaders/CTMSpine_sitk.py", line 271, in resample_image_sitk
+    resample.SetOutputDirection(image_sitk.GetDirection())
+AttributeError: 'numpy.ndarray' object has no attribute 'GetDirection'
+
