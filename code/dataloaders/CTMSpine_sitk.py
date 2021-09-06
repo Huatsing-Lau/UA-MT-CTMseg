@@ -16,7 +16,7 @@ from skimage import transform
 
 class CTMSpine(Dataset):
     """ CTM Spine Dataset """
-    def __init__(self, base_dir=None, split='train', num=None, transform=None, filename="mri_norm2.h5"):
+    def __init__(self, base_dir=None, split='train', num=None, transform=None, filename="preprocessed_CTM.h5"):
         self._base_dir = base_dir
         self.transform = transform
         self.filename = filename
@@ -81,6 +81,76 @@ class CTMSpine_unseg(Dataset):
 
         return sample
 
+class CTMSpine_semi(Dataset):
+    """ CTM Spine Dataset """
+    def __init__(
+        self, 
+        labeled_base_dir=None, 
+        unlabeled_base_dir=None,
+        split='train',
+        num=None,
+        transform=None, 
+        labeled_filename="preprocessed_CTM.h5",
+        unlabeled_filename="center_cut.h5"
+    ):
+        
+        self.labeled_base_dir = labeled_base_dir
+        self.unlabeled_base_dir = unlabeled_base_dir
+        self.transform = transform
+        self.labeled_filename = labeled_filename
+        self.unlabeled_filename = unlabeled_filename
+        self.sample_list = []
+        
+        if split == 'train':
+            with open(self.labeled_base_dir+'/../train.list', 'r') as f:
+                self.labeled_image_list = f.readlines()
+                self.labeled_image_list = [item.replace('\n','') for item in self.labeled_image_list]
+                self.labeled_image_list = [os.path.join(self.labeled_base_dir,image_name,self.labeled_filename) for image_name in self.labeled_image_list]
+                
+            with open(self.unlabeled_base_dir+'/../train_unseg_centercut.list', 'r') as f:
+                self.unlabeled_image_list = f.readlines()
+                self.unlabeled_image_list = [item.replace('\n','') for item in self.unlabeled_image_list]
+                self.unlabeled_image_list = [os.path.join(self.unlabeled_base_dir,image_name,self.unlabeled_filename) for image_name in self.unlabeled_image_list]
+                
+            self.image_list = self.labeled_image_list + self.unlabeled_image_list
+            
+        elif split == 'test':
+            with open(self.labeled_base_dir+'/../test.list', 'r') as f:
+                self.image_list = f.readlines()
+                self.image_list = [item.replace('\n','') for item in self.image_list]
+                self.image_list = [os.path.join(self.labeled_base_dir,image_name,self.labeled_filename) for image_name in self.image_list]
+        
+        if num is not None:
+            self.labeled_image_list = self.labeled_image_list[:num]
+
+    def __len__(self):
+        return len(self.image_list)
+    
+    def __len_labeled__(self):
+        return len(self.labeled_image_list)
+    
+    def __len_unlabeled__(self):
+        return len(self.unlabeled_image_list)
+
+    def __getitem__(self, idx):
+        image_filepath = self.image_list[idx]
+#         image = sitk.ReadImage(self._base_dir+"/"+image_name+"/image.nii.gz")
+#         label = sitk.ReadImage(self._base_dir+"/"+image_name+"/label_onehot.nii.gz")
+
+        h5f = h5py.File(image_filepath, 'r')
+        image = h5f['image'][:]
+        if idx < self.__len_labeled__():
+            label = h5f['label'][:]
+            label = np.argmax(label,axis=-1)
+        else:
+            label = None
+        sample = {'image': image, 'label': label}
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
 class CenterCrop(object):
     def __init__(self, output_size):
         self.output_size = output_size
@@ -96,8 +166,6 @@ class CenterCrop(object):
             pd = max((self.output_size[2] - image.shape[2]) // 2 + 3, 0)
             image = np.pad(image, [(pw, pw), (ph, ph), (pd, pd)], mode='constant', constant_values=0)
             if label is not None:
-                import pdb
-                pdb.set_trace()
                 label = np.pad(label, [(pw, pw), (ph, ph), (pd, pd)], mode='constant', constant_values=0)
 
         (w, h, d) = image.shape
@@ -107,7 +175,7 @@ class CenterCrop(object):
         d1 = int(round((d - self.output_size[2]) / 2.))
 
         image = image[w1:w1 + self.output_size[0], h1:h1 + self.output_size[1], d1:d1 + self.output_size[2]]
-        if label:
+        if label is not None:
             label = label[w1:w1 + self.output_size[0], h1:h1 + self.output_size[1], d1:d1 + self.output_size[2]]
 
         return {'image': image, 'label': label}
@@ -295,11 +363,10 @@ def resample_image_sitk(image_sitk, label_sitk=None, newspacing=None, out_size=N
 
 class RandomScale(object):
     """
-    Scale randomly the image within the scaling ratio of 0.8-1.2
+    Scale randomly the image within the scaling ratio of low to high
     Args:
     ratio_low, ratio_high (float): Desired ratio range of random scale 
     """
-
     def __init__(self, ratio_low, ratio_high):
         self.ratio_low = ratio_low
         self.ratio_high = ratio_high
@@ -308,26 +375,25 @@ class RandomScale(object):
         image, label = sample['image'], sample['label']
         
         # rescale
-        ratio = np.random.uniform(self.ratio_low, self.ratio_high)
-#         image = transform.rescale(image,ratio,order=1,anti_aliasing=True,preserve_range=True,multichannel=False) 
-#         image = resample_image(image, spacing=[0.3, 0.3, 3.0], ratio=ratio, is_label=False)
-        image,label = resample_image_sitk(image, label, [0.3, 0.3, 3.0])
+        scale = np.random.uniform(self.ratio_low, self.ratio_high)
+        image = transform.rescale(
+            image, 
+            scale=scale, 
+            order=1, 
+            anti_aliasing=True, 
+            preserve_range=True, 
+            multichannel=False) 
         
-        assert np.unique(label).tolist() == [0,1,2], "np.unique(label):"+str(np.unique(label).tolist())
         if label is not None:
-            image,label = resample_image_sitk(image, label, [0.3, 0.3, 3.0])
-        else:
-            image = resample_image_sitk(image, None, [0.3, 0.3, 3.0], None)
-#             label = transform.rescale(label,ratio,order=0,anti_aliasing=True,preserve_range=True,multichannel=False)
-            #label = resample_image3D(label,spacing=[0.3,0.3,3],ratio=ratio,method='Nearest')
-#             label = resample_image(image, spacing=[0.3, 0.3, 3.0], ratio=ratio, is_label=True)
-#             label = np.argmax(label,axis=-1)
-#         assert np.unique(label).tolist() == [0,1,2], "np.unique(rescaled label):"+str(np.unique(label).tolist())
-#         print("image.shape",image.shape,
-#               "label.shape",label.shape,
-#               "ratio,dsize:",ratio,dsize,
-#               "np.unique(label):",np.unique(label),
-#              )
+            label_unique = np.unique(label).tolist()
+            label = transform.rescale(
+                label, 
+                scale=scale, 
+                order=0, 
+                anti_aliasing=True, 
+                preserve_range=True,
+                multichannel=False)
+            assert np.unique(label).tolist() == label_unique, "np.unique(label):"+str(np.unique(label).tolist())
         return {'image': image, 'label': label}
 
 # +
@@ -379,9 +445,9 @@ class TransformConsistantOperator():
 
 # -
 
-class RandomRot(object):
+class RandomRotN90(object):
     """
-    Randomly rotate the dataset in a sample
+    Randomly rotate the dataset in a sample with N(N=1,2,3,4) times 90 degrees
     Args:
     output_size (int): Desired output size
     """
@@ -394,6 +460,45 @@ class RandomRot(object):
             label = np.rot90(label, k)
 
         return {'image': image, 'label': label}
+
+# +
+class RandomRot():
+    """
+    Randomly rotate the dataset in a sample
+    """
+    def __init__(self, min_angle=-180,max_angle=180):
+        self.min_angle = min_angle# degree
+        self.max_angle = max_angle# degree
+        
+    def __call__(self, sample):
+        image, label = sample['image'], sample['label']
+        angle = np.random.randint(self.min_angle, self.max_angle)
+        image = rotate3D_axisDonly(image, angle=angle, order=1, resize=False)
+        if label is not None:
+            label = rotate3D_axisDonly(label, angle=angle, order=0, resize=False)
+
+        return {'image': image, 'label': label}
+    
+def rotate3D_axisDonly(image3D, angle, order=1, resize=False):
+    """
+    image3D shape: HWD or HWDC with C=1
+    rotation is only perform around D dimension 
+    """
+    from skimage import transform
+    dim = len(image3D.shape)
+    if dim==4:
+        image3D = image3D.squeeze()
+        
+    # axis 2: rotate would always round axis2
+    image3D = transform.rotate(image3D,angle=angle,resize=resize,order=order)
+    if dim==4:
+        return image3D[:,:,:,np.newaxis]
+    else:
+        return image3D
+
+
+
+# -
 
 class RandomFlip(object):
     """
@@ -451,16 +556,16 @@ class ToTensor(object):
         
         if label is not None:
             if 'onehot_label' in sample:
-                return {'image': torch.from_numpy(image), 'label': torch.from_numpy(sample['label']).long(),
+                return {'image': torch.from_numpy(image), 'label': torch.from_numpy(label).long(),
                         'onehot_label': torch.from_numpy(sample['onehot_label']).long()}
             else:
-                return {'image': torch.from_numpy(image), 'label': torch.from_numpy(sample['label']).long()}
+                return {'image': torch.from_numpy(image), 'label': torch.from_numpy(label).long()}
         else:
             if 'onehot_label' in sample:
                 return {'image': torch.from_numpy(image),
                         'onehot_label': torch.from_numpy(sample['onehot_label']).long()}
             else:
-                return {'image': torch.from_numpy(image)}
+                return {'image': torch.from_numpy(image),'label':torch.zeros(image.shape[1:]).long()}
 
 
 class TwoStreamBatchSampler(Sampler):

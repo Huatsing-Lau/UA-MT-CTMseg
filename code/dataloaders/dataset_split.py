@@ -36,12 +36,10 @@ def save_list2txt(list_variable,fn):
     f.close()
 
 
-def dataset_split(path,save_dir,ratio=0.8,seed=42):
+def dataset_split(pat,save_dir,ratio=0.8,seed=42):
     """读取数据集文件夹，该函数将病例分为训练集和测试集，生成两个txt文件"""
-    re = os.path.join(path,'*/mri_norm2.h5')
-    listt = glob(re)
-    names = []
-    names += [ fn.split('/')[-2] for fn in listt ]#win系统改为'\\'
+    listt = glob(pat)
+    names = [ fn.split('/')[-2] for fn in listt ]#win系统改为'\\'
 
     names_train,names_test = data_split(names, ratio, shuffle=True, seed=seed)
     
@@ -51,14 +49,12 @@ def dataset_split(path,save_dir,ratio=0.8,seed=42):
     save_list2txt(names_test, fn_test)
     return names_train,names_test
 
-def make_dataset_list(path,save_dir):
+def make_dataset_list(pat,fn):
     """该函数读取数据集文件夹，列出所有病例，生成一个*.list文件"""
-    re = os.path.join(path,'*/mri_norm2.h5')
-    listt = glob(re)
+    listt = glob(pat)
     names = []
     names += [ fn.split('/')[-2] for fn in listt ]#win系统改为'\\'
     
-    fn = os.path.join(save_dir,'train_unseg.list')
     save_list2txt(names, fn)
 
 def remove_files(re):

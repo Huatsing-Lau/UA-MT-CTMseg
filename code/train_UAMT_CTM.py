@@ -26,12 +26,15 @@ from dataloaders.CTMSpine_sitk import CTMSpine, CTMSpine_unseg, RandomScale, Ran
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path_labeled', type=str, default='../data/CTM_dataset/Segmented')
-parser.add_argument('--root_path_unlabeled', type=str, default='../model/prediction/unSegmented_center_cut/VNet_Binary_CTM_post')#'../data/CTM_dataset/unSegmented'
-parser.add_argument('--exp', type=str,  default='UAMT_unlabel', help='model_name')
+parser.add_argument('--root_path_unlabeled', type=str, default='../model/prediction/unSegmented_center_cut/VNet_CTM_post')#VNet_Binary_CTM_post 
+parser.add_argument('--exp', type=str,  default='UAMT_unlabel', help='Name of Experiment, ie. model_name')
 parser.add_argument('--max_iterations', type=int,  default=6000, help='maximum epoch number to train')
+parser.add_argument('--max_epoch', type=int,  default=2000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=8, help='batch_size per gpu')
 parser.add_argument('--labeled_bs', type=int, default=4, help='labeled_batch_size per gpu')
 parser.add_argument('--base_lr', type=float,  default=0.01, help='maximum epoch number to train')
+parser.add_argument('--patience', type=int, default=20, help='maximum epoch number to keep patient')
+parser.add_argument('--patience_lr', type=int, default=10, help='maximum epoch number to keep patient for learning reduce')
 parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 parser.add_argument('--gpu', type=str,  default='2', help='GPU to use')
@@ -48,11 +51,14 @@ snapshot_path = "../model/" + args.exp + "/"
 
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-torch.cuda.empty_cache()
+if hasattr(torch.cuda, 'empty_cache'):
+    torch.cuda.empty_cache()
 batch_size = args.batch_size * len(args.gpu.split(','))
 max_iterations = args.max_iterations
+max_epoch = args.max_epoch
 base_lr = args.base_lr
-labeled_bs = args.labeled_bs * len(args.gpu.split(','))
+patience = args.patience
+patience_lr = args.patience_lr
 
 if args.deterministic:
     cudnn.benchmark = False
@@ -109,8 +115,9 @@ if __name__ == "__main__":
     db_train_labeled = CTMSpine(
         base_dir=labeled_train_data_path,
         split='train',
+        filename='preprocessed_CTM.h5',
         transform = transforms.Compose([
-            RandomScale(ratio_low=0.8, ratio_high=1.2),
+#             RandomScale(ratio_low=0.8, ratio_high=1.2),
             RandomNoise(mu=0, sigma=0.05),
             RandomRot(),
             RandomFlip(),
@@ -119,20 +126,24 @@ if __name__ == "__main__":
         ]))
     db_train_unlabeled = CTMSpine_unseg(
         base_dir=unlabeled_train_data_path,
+        filename='preprocessed_CTM.h5',
         transform = transforms.Compose([
-            RandomScale(ratio_low=0.8, ratio_high=1.2),
+#             RandomScale(ratio_low=0.8, ratio_high=1.2),
             RandomNoise(mu=0, sigma=0.05),
             RandomRot(),
             RandomFlip(),
             RandomCrop(patch_size),
             ToTensor(),
         ]))#因为计算一致性损失时增加了噪声，所以不在此处加噪声
-#     db_test = LAHeart(base_dir=labeled_train_data_path,
-#                        split='test',
-#                        transform = transforms.Compose([
-#                            CenterCrop(patch_size),
-#                            ToTensor()
-#                        ]))
+    
+    db_valid = CTMSpine(
+        base_dir=labeled_train_data_path,
+        split='test',
+        filename='preprocessed_CTM.h5',
+        transform = transforms.Compose([
+            CenterCrop(patch_size),
+            ToTensor()
+        ]))
     
 
     def worker_init_fn(worker_id):

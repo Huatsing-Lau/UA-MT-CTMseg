@@ -6,7 +6,7 @@ from test_util import test_all_case
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str, default='../data/CTM_dataset/Segmented', help='Folder of Test Set')
-parser.add_argument('--model', type=str,  default='UAMT_CTM', help='model_name')
+parser.add_argument('--model', type=str,  default='UAMT_unlabel', help='model_name')#'UAMT_CTM'
 parser.add_argument('--gpu', type=str,  default='0', help='GPU to use')
 FLAGS = parser.parse_args()
 
@@ -21,13 +21,18 @@ num_classes = len(name_classes)
 
 with open(FLAGS.root_path + '/../test.list', 'r') as f:
     image_list = f.readlines()
-image_list = [os.path.join(FLAGS.root_path,item.replace('\n', ''),"mri_norm2.h5") for item in image_list]
+image_list = [os.path.join(FLAGS.root_path,item.replace('\n', ''),"preprocessed_CTM.h5") for item in image_list]
 
-def test_calculate_metric(epoch_num, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device='cuda'):
-    net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False).to(device)#cuda()
-    save_mode_path = os.path.join(snapshot_path, 'iter_' + str(epoch_num) + '.pth')
-    net.load_state_dict(torch.load(save_mode_path))
-    print("init weight from {}".format(save_mode_path))
+# +
+def test_calculate_metric(
+    model_path, 
+    patch_size=(128, 128, 64), 
+    stride_xy=64, stride_z=32, 
+    device='cuda'):
+    
+#     net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False).to(device)#cuda()
+#     net.load_state_dict(torch.load(model_path))
+    net = torch.load(model_path)
     net.eval()
 
     metrics = test_all_case(
@@ -40,7 +45,10 @@ def test_calculate_metric(epoch_num, patch_size=(128, 128, 64), stride_xy=64, st
     return metrics
 
 
+# -
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    metrics = test_calculate_metric(10000, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device=device)
+    model_path = os.path.join(snapshot_path, './best_model.pth')# './finish_model.pkl' # 'final.pth'
+    metrics = test_calculate_metric(model_path, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device=device)
     metrics.to_csv(os.path.join(test_save_path,'metrics_test_set.csv'))

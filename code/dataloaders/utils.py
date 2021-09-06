@@ -237,10 +237,15 @@ def resample_image3D(
     newimage = resample.Execute(image3D)
     return newimage
 
-def sitk_onehot_transform(image):
+def sitk_onehot_transform(image,num_classes=None,dtype=None):
     image_array = sitk.GetArrayFromImage(image)
-    label_array_onehot = to_categorical(image_array)
-    image_onehot = sitk.GetImageFromArray(label_array_onehot)
+    if num_classes:
+        label_array_onehot = to_categorical(image_array,num_classes)
+    else:
+        label_array_onehot = to_categorical(image_array)
+    if dtype:
+        label_array_onehot = label_array_onehot.astype(dtype)
+    image_onehot = sitk.GetImageFromArray(label_array_onehot[:,:,:,1:])
     image_onehot.SetOrigin(image.GetOrigin())
     image_onehot.SetDirection(image.GetDirection())
     image_onehot.SetSpacing(image.GetSpacing())
@@ -280,6 +285,7 @@ def plot_slice_sample(image,label,d,fn=False):
     imgplot.set_clim(0.0, 3.0)
     a.set_title('label')
     plt.colorbar(orientation='horizontal')
+    plt.tight_layout()
     if fn:
         plt.savefig(fn)
     plt.show()

@@ -1,4 +1,5 @@
-########### 测试结果后处理所用到的函数 #############
+# -*- coding: utf-8 -*-
+# ########## 测试结果后处理所用到的函数 #############
 
 import os
 import numpy as np
@@ -51,7 +52,7 @@ def get_boxplot_binary(proc_df,metric,filename):
     plt.savefig(filename)
     # 显示图形
     plt.show()
-  
+
 
 
 # 多分类:
@@ -76,7 +77,7 @@ def get_voilinplot(proc_df,metric,name_classes,filename):
     plt.savefig(filename)
     # 显示图形
     plt.show()
-    
+
 def get_boxplot(proc_df,metric,name_classes,filename):
     # # https://cloud.tencent.com/developer/article/1486970
     plt.figure(dpi=100)
@@ -90,7 +91,7 @@ def get_boxplot(proc_df,metric,name_classes,filename):
     plt.show()
 
     
-    
+
     
 
 

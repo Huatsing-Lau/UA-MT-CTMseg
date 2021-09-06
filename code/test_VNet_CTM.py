@@ -20,19 +20,20 @@ if not os.path.exists(test_save_path):
 name_classes = ['bg','dura','SC']
 num_classes = len(name_classes)
 
-with open(FLAGS.root_path + '/../test.list', 'r') as f:
+
+# with open(FLAGS.root_path + '/../test.list', 'r') as f:
+with open('../data/CTM_dataset/test.list', 'r') as f:
     image_list = f.readlines()
-image_list = [os.path.join(FLAGS.root_path,item.replace('\n', ''),"mri_norm2.h5") for item in image_list]
+image_list = [os.path.join(FLAGS.root_path,item.replace('\n', ''),"preprocessed_CTM.h5") for item in image_list]
 
 def test_calculate_metric(
-    epoch_num, patch_size=(128, 128, 64), 
+    model_path, patch_size=(128, 128, 64), 
     stride_xy=64, stride_z=32, 
     device='cuda'):
     
-    net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False).to(device)
-    save_mode_path = os.path.join(snapshot_path, 'iter_' + str(epoch_num) + '.pth')
-    net.load_state_dict(torch.load(save_mode_path))
-    print("init weight from {}".format(save_mode_path))
+    #net = VNet(n_channels=1, n_classes=num_classes, normalization='batchnorm', has_dropout=False).to(device)
+    #net.load_state_dict(torch.load(model_path))
+    net = torch.load(model_path)
     net.eval()
 
     metrics = test_all_case(
@@ -46,5 +47,6 @@ def test_calculate_metric(
 
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    metrics = test_calculate_metric(6001, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device=device)
+    model_path = os.path.join(snapshot_path, 'best_model.pth')# 'final.pth'
+    metrics = test_calculate_metric(model_path, patch_size=(128, 128, 64), stride_xy=64, stride_z=32, device=device)
     metrics.to_csv(os.path.join(test_save_path,'metrics_test_set.csv'))

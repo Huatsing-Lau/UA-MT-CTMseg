@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import os
+from keras.utils.np_utils import to_categorical
 
 def predict_and_center_cut_single_case(
     net,image_path,out_dir,num_classes,
@@ -181,6 +182,8 @@ def test_all_case(
         if preproc_fn is not None:
             image = preproc_fn(image)
         prediction, score_map = test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=num_classes, device="cuda")
+        
+        
 
         if np.sum(prediction)==0:
             single_metric = (0,0,0,0)
@@ -256,6 +259,12 @@ def test_single_case(net, image, stride_xy, stride_z, patch_size, num_classes=1,
     if add_pad:
         label_map = label_map[wl_pad:wl_pad+w,hl_pad:hl_pad+h,dl_pad:dl_pad+d]
         score_map = score_map[:,wl_pad:wl_pad+w,hl_pad:hl_pad+h,dl_pad:dl_pad+d]
+        
+    # 过滤掉小的连通域
+    filter_mask = filter_connected_domain(label_map,min_region_area=100,num_keep_region=None,ratio_keep=None)
+    filter_mask = (filter_mask>0).astype(float)
+    label_map = label_map*filter_mask
+    
     return label_map, score_map
 
 def cal_dice(prediction, label, num=2):
@@ -282,7 +291,6 @@ def calculate_metric_percase(pred, gt, num_classes):
         hd = metric.binary.hd95(pred, gt)
         asd = metric.binary.asd(pred, gt)
     elif num_classes>2:
-        from keras.utils import to_categorical
         gt_onehot = to_categorical(gt, num_classes)
         pred_onehot = to_categorical(pred, num_classes)
         dice = []
